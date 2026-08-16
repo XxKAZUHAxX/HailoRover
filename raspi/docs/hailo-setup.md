@@ -89,9 +89,16 @@ git checkout feature/hailo-inference-layer
 # Server deps (note: opencv-python gets replaced by opencv-python-headless — expected)
 pip install -r raspi/server/requirements.txt
 
+# hailoRT wheel deps that may be missing from the venv (harmless if already present)
+pip install contextlib2 future
+
 # The Option B inference layer (editable)
 pip install -e raspi/hailo-layer
 ```
+
+> **numpy constraint**: HailoRT 4.23 requires `numpy<2` — the server's
+> `requirements.txt` pins `numpy>=1.26,<2` for exactly this reason. Do not
+> `pip install -U numpy` in this venv.
 
 ---
 
