@@ -1,0 +1,36 @@
+version: "3.9"
+
+services:
+  server:
+    build: .
+    container_name: objdetect-server
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    devices:
+      # USB camera
+      - /dev/video0:/dev/video0
+      # UART for STM32 (enable when motor control is in use)
+      # - /dev/ttyAMA0:/dev/ttyAMA0
+    volumes:
+      # Mount model directory for easy model swapping
+      - ./models:/app/models:ro
+      # Mount frontend build output for SPA serving
+      - ./frontend-dist:/app/frontend-dist:ro
+    environment:
+      - CAMERA_BACKEND=v4l2
+      - CAMERA_DEVICE=/dev/video0
+      - INFERENCE_ENGINE=onnx
+      - MODEL_PATH=/app/models/yolov8n.onnx
+      - CONFIDENCE_THRESHOLD=0.5
+      - NETWORK_MODE=lan
+      - MOTOR_ENABLED=false
+    # For Hailo AI Hat: add device mapping
+    # devices:
+    #   - /dev/hailo0:/dev/hailo0
+    # privileged: true  # May be needed for Hailo PCIe access
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

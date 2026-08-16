@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+.venv/
+venv/
+*.egg
+
+# Node / React
+node_modules/
+raspi/frontend/dist/
+.npm/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Models (large binaries)
+*.onnx
+*.hef
+*.pt
+*.pth
+*.tflite
+
+# Docker
+docker-compose.override.yml
+
+# Logs
+*.log
+logs/
+
+# Build artifacts
+build/
+*.o
+*.elf
+*.hex
+*.bin
+
+# Third-party checkout (hailo-apps — reference only, not part of this project)
+hailo-apps/
+
+# Generated frontend build (copied into raspi/server/frontend-dist)
+frontend-dist/
+
+# Downloaded models dir
+raspi/server/models/

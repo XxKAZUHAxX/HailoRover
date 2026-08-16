@@ -1,0 +1,9 @@
+-r requirements.txt
+
+# Development
+pytest==8.*
+pytest-asyncio==0.25.*
+httpx==0.28.*
+black==24.*
+ruff==0.9.*
+mypy==1.14.*
