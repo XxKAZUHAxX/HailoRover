@@ -22,7 +22,24 @@ cd raspi/server
 docker compose up -d
 ```
 
-### Bare-Metal
+### Hailo NPU (bare-metal, recommended for the AI Hat)
+Runs the server + GStreamer inference pipeline inside the Pi's `venv_hailo_apps`
+(hailo-apps 26.03, Trixie). Full setup in [hailo-setup.md](raspi/docs/hailo-setup.md).
+
+```bash
+cd ~/hailo-apps && source setup_env.sh          # activates venv_hailo_apps
+cd ~/smart-vehicle
+pip install -r raspi/server/requirements.txt
+pip install -e raspi/hailo-layer
+
+cd raspi/server
+cp .env.example .env                            # set INFERENCE_ENGINE=hailo
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+Standalone pipeline check (no server): `hailo-smoke --hef-path yolov8m --input /dev/video0 --run-time 30`
+
+### Bare-Metal (ONNX / CPU)
 ```bash
 cd raspi/server
 bash scripts/setup.sh
@@ -51,7 +68,7 @@ Open `http://<raspberry-pi-ip>:8000` in any browser on the same network.
 ## Development Phases
 1. **Foundation** — Camera streaming + web UI
 2. **Inference** — YOLOv8 ONNX CPU inference
-3. **AI Hat** — Hailo NPU acceleration
+3. **AI Hat** — Hailo NPU acceleration (hailo-layer Option B package) ✅
 4. **Motor Control** — UART + joystick control
 5. **Polish** — Hotspot, monitoring, UI refinement
 6. **Vehicle** — STM32 firmware + physical integration
