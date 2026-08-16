@@ -17,8 +17,22 @@ from __future__ import annotations
 
 import importlib.metadata
 
-HAILO_APPS_MIN_VERSION = "26.03.0"   # inclusive
-HAILO_APPS_MAX_VERSION = "26.04.0"   # exclusive — 26.03.x patch releases accepted automatically
+HAILO_APPS_MIN_VERSION = "26.3.0"   # inclusive
+HAILO_APPS_MAX_VERSION = "26.4.0"   # exclusive — 26.3.x patch releases accepted automatically
+
+
+def _parse_version(v: str) -> tuple[int, ...]:
+    """Parse a dotted version into ints.
+
+    Tolerant of missing zero-padding: pip metadata may report ``26.3.0`` while
+    the repo tags say ``26.03.0`` — string comparison breaks on that, numeric
+    tuples don't.
+    """
+    nums = []
+    for part in v.split(".")[:3]:
+        digits = "".join(ch for ch in part if ch.isdigit())
+        nums.append(int(digits) if digits else 0)
+    return tuple(nums)
 
 
 def check_hailo_apps_version() -> None:
@@ -30,7 +44,11 @@ def check_hailo_apps_version() -> None:
             "hailo-apps is not installed in this environment. "
             "See raspi/docs/hailo-setup.md: install hailo-apps into venv_hailo_apps."
         ) from e
-    if not (HAILO_APPS_MIN_VERSION <= version < HAILO_APPS_MAX_VERSION):
+    if not (
+        _parse_version(HAILO_APPS_MIN_VERSION)
+        <= _parse_version(version)
+        < _parse_version(HAILO_APPS_MAX_VERSION)
+    ):
         raise RuntimeError(
             f"hailo-apps {version} is outside the supported range "
             f"[{HAILO_APPS_MIN_VERSION}, {HAILO_APPS_MAX_VERSION}). Update the constants "
