@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hailo-layer"
+version = "0.1.0"
+description = "Hailo GStreamer inference layer (pipeline-takeover mode) for the HailoRover server"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2.0",
+    "opencv-python-headless>=4.10,<5",
+]
+
+# hailo-apps is intentionally NOT declared here: it is not on PyPI and is
+# installed editable from the git checkout inside the Pi's venv_hailo_apps.
+# The pipeline layer checks its version at runtime (see pipeline/runner.py).
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.9"]
+
+[project.scripts]
+hailo-smoke = "hailo_layer.pipeline.scripts.smoke:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100

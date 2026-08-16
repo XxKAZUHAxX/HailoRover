@@ -153,8 +153,19 @@ class InferenceService:
         engine_type = settings.inference_engine
         if engine_type == "hailo":
             from app.hal.hailo_hal import HailoRuntime
-            self._engine = HailoRuntime(str(settings.model_path_resolved))
-            logger.info("Inference engine: Hailo NPU")
+            self._engine = HailoRuntime(
+                hef_path=settings.hef_path,
+                labels_json=settings.labels_json,
+                arch=settings.hailo_arch,
+                input_source=settings.camera_device,
+                width=settings.camera_width,
+                height=settings.camera_height,
+                frame_rate=settings.camera_fps,
+                queue_size=settings.hailo_queue_size,
+                watchdog=settings.hailo_watchdog,
+                startup_timeout=settings.hailo_startup_timeout,
+            )
+            logger.info("Inference engine: Hailo NPU (GStreamer pipeline takeover)")
         else:
             self._engine = ONNXInferenceEngine(str(settings.model_path_resolved))
             logger.info("Inference engine: ONNX (CPU)")
@@ -167,6 +178,17 @@ class InferenceService:
         results = self._engine.infer(frame)
         self._inference_time_ms = (time.perf_counter() - t0) * 1000
         return results
+
+    @property
+    def engine_owns_camera(self) -> bool:
+        """True when the engine runs its own capture pipeline (hailo takeover mode)."""
+        return settings.inference_engine == "hailo" and self._engine is not None
+
+    def read_frame(self) -> Any:
+        """Consume one (frame, detections, latency) result — pipeline-mode only."""
+        if not self.engine_owns_camera:
+            return None
+        return self._engine.read()
 
     @property
     def inference_time_ms(self) -> float:

@@ -3,7 +3,7 @@
 # Usage: bash scripts/setup.sh
 set -euo pipefail
 
-echo "══╡ Object Detection Server — Bare-Metal Setup ╞══"
+echo "══╡ HailoRover Server — Bare-Metal Setup ╞══"
 
 # ── System packages ──────────────────────────────────────
 echo "[1/4] Installing system dependencies..."

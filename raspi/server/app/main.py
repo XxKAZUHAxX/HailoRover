@@ -32,13 +32,16 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup: init hardware services. Shutdown: clean release."""
-    logger.info("══╡ Object Detection Server Starting ╞══")
+    logger.info("══╡ HailoRover Server Starting ╞══")
     logger.info("Camera:  %s @ %s", settings.camera_backend, settings.camera_device)
     logger.info("Inference: %s", settings.inference_engine)
     logger.info("Motor: %s", "enabled" if settings.motor_enabled else "disabled")
 
     # Init hardware in dependency order
-    camera_service.start()
+    # (GStreamer owns the camera in hailo pipeline-takeover mode — a second
+    #  V4L2 reader risks buffer corruption)
+    if settings.inference_engine != "hailo":
+        camera_service.start()
     motor_service.initialize()
 
     # Init inference (may fail gracefully if no model)
@@ -64,13 +67,14 @@ async def lifespan(app: FastAPI):
     await stream_service.stop()
     inference_service.shutdown()
     motor_service.shutdown()
-    camera_service.stop()
+    if settings.inference_engine != "hailo":
+        camera_service.stop()
     logger.info("══╡ Server stopped ╞══")
 
 
 # ── App ──────────────────────────────────────────────────
 app = FastAPI(
-    title="Object Detection Server",
+    title="HailoRover",
     version="0.1.0",
     lifespan=lifespan,
 )

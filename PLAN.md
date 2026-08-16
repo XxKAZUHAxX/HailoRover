@@ -1,4 +1,4 @@
-# Architecture Plan — Object Detection on Raspberry Pi 5
+# Architecture Plan — HailoRover
 
 ## Overview
 
@@ -44,11 +44,16 @@ Real-time object detection system on Raspberry Pi 5 with Hailo AI Hat (26 TOPS N
 ├────────────────────────────────────────────────┤
 │  Hardware Abstraction Layer (HAL)               │
 │  - CameraHAL (USB + MIPI CSI)                   │
-│  - HailoHAL (HailoRT Python API)                │
+│  - HailoHAL (hailo_layer pipeline facade)       │
 │  - UARTHAL (pyserial → STM32)                   │
 ├────────────────────────────────────────────────┤
-│  OS: Raspberry Pi OS (64-bit, Bookworm)         │
-│  Runtime: Docker (primary) or bare-metal        │
+│  hailo_layer (Option B package, Pi-only parts)  │
+│  - GStreamerDetectionApp subclass + callback    │
+│  - PipelineRunner (dedicated pipeline thread)   │
+├────────────────────────────────────────────────┤
+│  OS: Raspberry Pi OS (64-bit, Trixie)           │
+│  Runtime: bare-metal venv_hailo_apps (hailo)    │
+│           or Docker (onnx/CPU path)             │
 └────────────────────────────────────────────────┘
 ```
 
@@ -128,8 +133,9 @@ Expected: ~10 FPS on RPi 5 CPU
 
 ### Phase 2: NPU Accelerated (with AI Hat)
 ```
-YOLOv8s → ONNX export → Hailo Dataflow Compiler → .hef model → HailoRT → NPU inference
-Expected: ~30 FPS on Hailo-8L
+v4l2src → hailo-apps GStreamer pipeline (hailonet + hailofilter C++ NMS)
+       → handoff callback → FrameQueue → StreamService → WebSocket
+Expected: ~30 FPS on Hailo-8L (yolov8m HEF, NMS compiled-in)
 ```
 
 ### Model Compilation Workflow
@@ -204,8 +210,16 @@ root/
 │   │   ├── requirements-dev.txt
 │   │   ├── Dockerfile
 │   │   └── docker-compose.yml
+│   ├── hailo-layer/                  # Option B inference package (depends on hailo-apps)
+│   │   ├── pyproject.toml
+│   │   ├── src/hailo_layer/
+│   │   │   ├── types.py                 # BBox / Detection / FrameResult dataclasses
+│   │   │   ├── config.py                # PipelineOptions
+│   │   │   ├── domain/                  # pure Python: FrameQueue, conversions
+│   │   │   └── pipeline/                # Pi-only: hailo_compat, parser, app, callback, runner
+│   │   └── tests/                       # domain tests (pytest on Windows)
 │   └── docs/
-│       ├── hailo-setup.md               # Hailo driver + SDK installation
+│       ├── hailo-setup.md               # Hailo stack setup (real stack: hailo-apps 26.03)
 │       ├── model-compilation.md         # Step-by-step model export guide
 │       └── networking.md                # LAN + hotspot configuration
 ├── firmware/                        # STM32 motor control (future)
@@ -285,6 +299,19 @@ UART requires 2 wires, works over longer distances on a vehicle chassis, and the
 ### Why differential drive math on the server?
 Keeps the STM32 firmware dead simple: receive two PWM duty values, apply them. All the control logic (joystick mapping, speed ramping, dead zones) lives in Python where it's easy to test and modify.
 
+### Hailo Inference Layer (Option B)
+Hailo inference is implemented as a **separate installable package** (`raspi/hailo-layer/`) that depends on hailo-apps rather than editing hailo-apps itself:
+
+- **Pipeline takeover mode** — when `INFERENCE_ENGINE=hailo`, a `GStreamerDetectionApp` subclass runs camera + inference in a dedicated background thread (hailo-apps owns the camera; the server's `camera_service` is not started). The handoff callback pushes `FrameResult(BGR frame, detections, latency_ms)` into a drop-oldest `FrameQueue`; `stream_service` consumes it instead of `camera.read()` + `detect()`. The ONNX path is untouched and Docker stays CPU-only.
+- **Layering** — `hailo_layer.types` / `hailo_layer.domain` are pure Python (no hailo/GStreamer imports; pytest on Windows). `hailo_layer.pipeline` is hailo-aware and imported only on the Pi.
+- **Coupling policy** — the `hailo-apps/` clone in the repo root is reference-only (gitignored). Every hailo-apps import and the version range constants live in one file: `hailo_layer/pipeline/hailo_compat.py`. Upgrading hailo-apps = bump two constants, review that one file, rerun `hailo-smoke`.
+- **Venv strategy** — the server runs inside `venv_hailo_apps` (Trixie, Python 3.13); server requirements + hailo-layer are pip-installed into it. `opencv-python` is replaced by `opencv-python-headless` (expected).
+- **Thread lifecycle** — the GStreamer app is constructed and run in one daemon thread (GLib mainloop thread affinity). Embedded-hostile behaviors are neutralized: `signal.signal` call in the parent `__init__`, `sys.exit` at end of `run()`, `autovideosink` → `fakesink`, hailo's `init_logging(force=True)` handler wipe is restored.
+- **Labels divergence** — hailo labels come from the HEF (COCO-80 built into the TAPPAS `.so` for yolov8\*); the ONNX engine keeps its hardcoded `COCO_CLASSES`. They agree for stock COCO models. Custom-label HEFs require `LABELS_JSON` (+ `COCO_CLASSES` update) in the same change.
+- **NMS thresholds divergence** — hailo NMS is hardcoded 0.3/0.45 by `GStreamerDetectionApp`; `CONFIDENCE_THRESHOLD` / `IOU_THRESHOLD` apply to the ONNX engine only.
+
+Version pairing matrix lives in `raspi/docs/hailo-setup.md` (hailo-apps 26.03.x ↔ HailoRT 4.23 ↔ TAPPAS 5.1 ↔ Trixie/Python 3.13).
+
 ---
 
 ## Development Phases
@@ -302,9 +329,9 @@ Keeps the STM32 firmware dead simple: receive two PWM duty values, apply them. A
 - [ ] Performance benchmarking (FPS, latency)
 
 ### Phase 3: AI Hat Integration
-- [ ] HailoRT driver + SDK installation
-- [ ] Model compilation pipeline
-- [ ] NPU-accelerated inference
+- [x] HailoRT driver + SDK installation
+- [x] Model compilation pipeline
+- [x] NPU-accelerated inference (hailo-layer Option B package + pipeline takeover)
 - [ ] A/B performance comparison
 
 ### Phase 4: Motor Control
@@ -337,8 +364,14 @@ All runtime configuration via environment variables or `.env` file:
 | `CAMERA_HEIGHT` | `480` | Frame height |
 | `CAMERA_FPS` | `30` | Target capture FPS |
 | `INFERENCE_ENGINE` | `onnx` | `onnx` (CPU) or `hailo` (NPU) |
-| `MODEL_PATH` | `models/yolov8n.onnx` | Path to model file |
-| `CONFIDENCE_THRESHOLD` | `0.5` | Minimum detection confidence |
+| `MODEL_PATH` | `models/yolov8n.onnx` | Path to model file (ONNX engine) |
+| `CONFIDENCE_THRESHOLD` | `0.5` | Minimum detection confidence (ONNX engine) |
+| `HEF_PATH` | `yolov8m` | HEF name/path; auto-downloaded by hailo-apps |
+| `LABELS_JSON` | — | Custom labels json for hailofilter (COCO default) |
+| `HAILO_ARCH` | — | `hailo8` / `hailo8l` / `hailo10h` (auto-detect) |
+| `HAILO_QUEUE_SIZE` | `2` | FrameQueue depth (drop-oldest) |
+| `HAILO_WATCHDOG` | `false` | hailo-apps pipeline watchdog |
+| `HAILO_STARTUP_TIMEOUT` | `60` | Seconds; first run may download the HEF |
 | `UART_PORT` | `/dev/ttyAMA0` | STM32 UART device |
 | `UART_BAUD` | `115200` | UART baud rate |
 | `NETWORK_MODE` | `lan` | `lan` or `hotspot` |
