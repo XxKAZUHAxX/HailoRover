@@ -1,6 +1,6 @@
 # hailo-layer
 
-Hailo GStreamer inference layer (pipeline-takeover mode) for the Smart Vehicle
+Hailo GStreamer inference layer (pipeline-takeover mode) for the HailoRover
 detection server. A separate package (Option B) built on top of
 [hailo-apps](https://github.com/hailo-ai/hailo-apps) — see the project
 `PLAN.md` for the architecture decision.

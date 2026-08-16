@@ -1,4 +1,4 @@
-# Architecture Plan — Object Detection on Raspberry Pi 5
+# Architecture Plan — HailoRover
 
 ## Overview
 

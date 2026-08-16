@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "hailo-layer"
 version = "0.1.0"
-description = "Hailo GStreamer inference layer (pipeline-takeover mode) for the Smart Vehicle server"
+description = "Hailo GStreamer inference layer (pipeline-takeover mode) for the HailoRover server"
 requires-python = ">=3.11"
 dependencies = [
     "numpy>=2.0",

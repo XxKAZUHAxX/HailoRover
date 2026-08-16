@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup: init hardware services. Shutdown: clean release."""
-    logger.info("══╡ Object Detection Server Starting ╞══")
+    logger.info("══╡ HailoRover Server Starting ╞══")
     logger.info("Camera:  %s @ %s", settings.camera_backend, settings.camera_device)
     logger.info("Inference: %s", settings.inference_engine)
     logger.info("Motor: %s", "enabled" if settings.motor_enabled else "disabled")
@@ -74,7 +74,7 @@ async def lifespan(app: FastAPI):
 
 # ── App ──────────────────────────────────────────────────
 app = FastAPI(
-    title="Object Detection Server",
+    title="HailoRover",
     version="0.1.0",
     lifespan=lifespan,
 )

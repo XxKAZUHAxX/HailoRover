@@ -1,4 +1,6 @@
-# Object Detection on Raspberry Pi 5
+# HailoRover
+
+> Edge-vision object detection on a Hailo-powered rover
 
 Real-time object detection with YOLOv8 on Raspberry Pi 5 + Hailo AI Hat (26 TOPS). Web-based UI with live video stream, detection overlays, and motor control for smart vehicle integration.
 
@@ -28,7 +30,7 @@ Runs the server + GStreamer inference pipeline inside the Pi's `venv_hailo_apps`
 
 ```bash
 cd ~/hailo-apps && source setup_env.sh          # activates venv_hailo_apps
-cd ~/smart-vehicle
+cd ~/HailoRover
 pip install -r raspi/server/requirements.txt
 pip install -e raspi/hailo-layer
 

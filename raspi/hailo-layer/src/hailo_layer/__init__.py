@@ -1,4 +1,4 @@
-"""hailo-layer — Hailo GStreamer inference layer for the Smart Vehicle server.
+"""hailo-layer — Hailo GStreamer inference layer for the HailoRover server.
 
 Layering:
 - ``hailo_layer.types`` / ``hailo_layer.domain`` — pure Python, no hailo or

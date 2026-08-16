@@ -83,7 +83,7 @@ hailo-detect --input /dev/video0
 ## 4. Install this project into venv_hailo_apps
 
 ```bash
-cd ~/smart-vehicle           # this repo's checkout on the Pi
+cd ~/HailoRover              # this repo's checkout on the Pi
 git checkout feature/hailo-inference-layer
 
 # Server deps (note: opencv-python gets replaced by opencv-python-headless — expected)
@@ -98,7 +98,7 @@ pip install -e raspi/hailo-layer
 ## 5. Run with the Hailo engine
 
 ```bash
-cd ~/smart-vehicle/raspi/server
+cd ~/HailoRover/raspi/server
 
 # Create .env from the example:
 cp .env.example .env

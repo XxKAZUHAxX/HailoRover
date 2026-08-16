@@ -1,7 +1,7 @@
-# ── Raspberry Pi 5 (ARM64) Docker image for Object Detection Server ──
+# ── Raspberry Pi 5 (ARM64) Docker image for HailoRover server (ONNX/CPU path) ──
 FROM python:3.11-slim-bookworm
 
-LABEL description="YOLOv8 Object Detection Server with FastAPI"
+LABEL description="HailoRover — YOLOv8 object detection server with FastAPI"
 LABEL org.opencontainers.image.authors="jesryljade"
 
 # Prevent Python from writing .pyc files and buffering stdout
