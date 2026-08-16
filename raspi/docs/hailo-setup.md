@@ -86,6 +86,9 @@ hailo-detect --input /dev/video0
 cd ~/HailoRover              # this repo's checkout on the Pi
 git checkout feature/hailo-inference-layer
 
+# Activate the Hailo venv without leaving the repo (wrapper for ~/hailo-apps/venv_hailo_apps)
+source setup_env.sh
+
 # Server deps (note: opencv-python gets replaced by opencv-python-headless — expected)
 pip install -r raspi/server/requirements.txt
 
