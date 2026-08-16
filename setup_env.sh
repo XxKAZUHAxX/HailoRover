@@ -15,7 +15,7 @@ if [ -z "$BASH_VERSION" ] && [ -z "$ZSH_VERSION" ]; then
     exit 1
 fi
 
-VENV="${HAILO_APPS_VENV:-$HOME/hailo-apps/venv_hailo_apps}"
+VENV="${HAILO_APPS_VENV:-$HOME/Documents/Public Repositories/hailo-apps/venv_hailo_apps}"
 
 if [ -d "$VENV" ]; then
     source "$VENV/bin/activate"
