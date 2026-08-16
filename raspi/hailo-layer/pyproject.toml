@@ -20,7 +20,7 @@ dependencies = [
 dev = ["pytest>=8", "ruff>=0.9"]
 
 [project.scripts]
-hailo-smoke = "hailo_layer.scripts.smoke:main"
+hailo-smoke = "hailo_layer.pipeline.scripts.smoke:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
