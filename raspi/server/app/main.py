@@ -38,7 +38,10 @@ async def lifespan(app: FastAPI):
     logger.info("Motor: %s", "enabled" if settings.motor_enabled else "disabled")
 
     # Init hardware in dependency order
-    camera_service.start()
+    # (GStreamer owns the camera in hailo pipeline-takeover mode — a second
+    #  V4L2 reader risks buffer corruption)
+    if settings.inference_engine != "hailo":
+        camera_service.start()
     motor_service.initialize()
 
     # Init inference (may fail gracefully if no model)
@@ -64,7 +67,8 @@ async def lifespan(app: FastAPI):
     await stream_service.stop()
     inference_service.shutdown()
     motor_service.shutdown()
-    camera_service.stop()
+    if settings.inference_engine != "hailo":
+        camera_service.stop()
     logger.info("══╡ Server stopped ╞══")
 
 

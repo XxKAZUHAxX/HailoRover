@@ -11,6 +11,8 @@ from typing import Any
 import cv2
 import numpy as np
 
+from hailo_layer.domain.conversions import to_dicts  # pure module — import-safe on any platform
+
 from app.config import settings
 from app.services.camera_service import camera_service
 from app.services.inference_service import inference_service
@@ -68,15 +70,40 @@ class StreamService:
         """Main loop: read frame → infer → encode → push to all client queues."""
         frame_count = 0
         fps_start = time.monotonic()
+        last_hailo_frame = time.monotonic()
+        stall_warned = False
 
         while self._running:
-            frame = camera_service.read()
-            if frame is None:
-                await asyncio.sleep(0.001)  # 1ms yield
-                continue
+            if inference_service.engine_owns_camera:
+                # Hailo: GStreamer owns the camera; consume (frame, detections, latency).
+                result = inference_service.read_frame()
+                if result is None:
+                    elapsed = time.monotonic() - last_hailo_frame
+                    warn_interval = 10.0 if not stall_warned else 30.0
+                    if elapsed > warn_interval:
+                        logger.warning(
+                            "Hailo pipeline produced no frames for %.0fs — "
+                            "check camera and hailo-apps logs",
+                            elapsed,
+                        )
+                        stall_warned = True
+                        last_hailo_frame = time.monotonic()  # re-arm
+                    await asyncio.sleep(0.001)  # 1ms yield
+                    continue
+                last_hailo_frame = time.monotonic()
+                stall_warned = False
+                frame = result.frame
+                detections = to_dicts(result)
+                inference_ms = result.latency_ms
+            else:
+                frame = camera_service.read()
+                if frame is None:
+                    await asyncio.sleep(0.001)  # 1ms yield
+                    continue
 
-            # Run inference (synchronously — ONNX releases GIL, Hailo is non-blocking)
-            detections = inference_service.detect(frame) if inference_service.is_initialized else []
+                # Run inference (synchronously — ONNX releases GIL)
+                detections = inference_service.detect(frame) if inference_service.is_initialized else []
+                inference_ms = inference_service.inference_time_ms
 
             # Encode JPEG
             encode_success, jpeg_bytes = cv2.imencode(
@@ -100,8 +127,10 @@ class StreamService:
             detection_msg = json.dumps({
                 "type": "detections",
                 "timestamp": time.time(),
-                "fps": round(camera_service.fps, 1),
-                "inference_ms": round(inference_service.inference_time_ms, 1),
+                "fps": round(
+                    self._fps if inference_service.engine_owns_camera else camera_service.fps, 1
+                ),
+                "inference_ms": round(inference_ms, 1),
                 "objects": detections,
             })
 
@@ -124,8 +153,8 @@ class StreamService:
             for cid in stale_clients:
                 self.unregister_client(cid)
 
-            # FPS calculation
-            frame_count += 1
+            # FPS calculation (frame_count already incremented once per frame above —
+            # previously it was incremented twice, reporting ~2× actual FPS)
             elapsed = time.monotonic() - fps_start
             if elapsed >= 1.0:
                 self._fps = frame_count / elapsed

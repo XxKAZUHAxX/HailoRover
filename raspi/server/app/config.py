@@ -27,6 +27,16 @@ class Settings(BaseSettings):
     iou_threshold: float = 0.45
     coco_names_path: str = "models/coco.names"
 
+    # ── Hailo (NPU) — only used when inference_engine == "hailo" ──
+    # NMS thresholds (0.3/0.45) are hardcoded by GStreamerDetectionApp;
+    # confidence_threshold / iou_threshold above apply to the ONNX engine only.
+    hef_path: str = "yolov8m"             # HEF name or path; resolved + auto-downloaded by hailo-apps
+    labels_json: str | None = None        # Labels JSON for hailofilter (None = model default, COCO for yolov8*)
+    hailo_arch: str | None = None         # "hailo8" | "hailo8l" | "hailo10h" (None = .env/auto-detect)
+    hailo_queue_size: int = 2             # FrameQueue depth (drop-oldest)
+    hailo_watchdog: bool = False          # hailo-apps pipeline watchdog (auto-rebuild on stall)
+    hailo_startup_timeout: float = 60.0   # seconds; first run may auto-download the HEF
+
     # ── UART / Motor ────────────────────────────────────────
     uart_port: str = "/dev/ttyAMA0"
     uart_baud: int = 115200

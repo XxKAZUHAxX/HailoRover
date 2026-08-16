@@ -12,6 +12,7 @@ from app.config import settings
 from app.models.schemas import ConfigUpdate, SystemHealth
 from app.services.camera_service import camera_service
 from app.services.inference_service import inference_service
+from app.services.stream_service import stream_service
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,9 @@ async def health() -> SystemHealth:
         cpu_temp_c=_read_cpu_temp(),
         npu_temp_c=None,  # TODO: Hailo temperature via HailoRT
         uptime_seconds=round(time.time() - _START_TIME, 1),
-        fps=round(camera_service.fps, 1),
+        fps=round(
+            stream_service.fps if settings.inference_engine == "hailo" else camera_service.fps, 1
+        ),
         inference_engine=settings.inference_engine,
         camera_backend=settings.camera_backend,
         network_mode=settings.network_mode,
