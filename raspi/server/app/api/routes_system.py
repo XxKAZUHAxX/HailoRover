@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import re
 import time
 from pathlib import Path
 
@@ -33,12 +35,50 @@ def _read_cpu_temp() -> float | None:
     return None
 
 
+_NPU_TEMP_TTL_S = 15.0  # health is polled every ~5s; don't spawn hailortcli that often
+_npu_temp_cache: dict[str, object] = {"value": None, "at": 0.0}
+
+
+def _parse_npu_temp(text: str) -> float | None:
+    """Extract the temperature from `hailortcli fw-control read-temperature` output."""
+    match = re.search(r"([\d.]+)\s*C", text)
+    return float(match.group(1)) if match else None
+
+
+async def _read_npu_temp() -> float | None:
+    """Read Hailo NPU temperature via hailortcli (None when unavailable).
+
+    The firmware-control interface works while the inference pipeline is
+    running, so this is safe to call concurrently with streaming.
+    """
+    now = time.monotonic()
+    if now - float(_npu_temp_cache["at"]) < _NPU_TEMP_TTL_S:  # type: ignore[arg-type]
+        return _npu_temp_cache["value"]  # type: ignore[return-value]
+
+    value: float | None = None
+    if settings.inference_engine == "hailo":
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "hailortcli", "fw-control", "read-temperature",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+            value = _parse_npu_temp(out.decode(errors="ignore"))
+        except (OSError, asyncio.TimeoutError):
+            pass  # hailortcli missing or device unavailable — stay None
+
+    _npu_temp_cache["value"] = value
+    _npu_temp_cache["at"] = now
+    return value
+
+
 @router.get("/health", response_model=SystemHealth)
 async def health() -> SystemHealth:
     """System health snapshot: temps, uptime, FPS, engine status."""
     return SystemHealth(
         cpu_temp_c=_read_cpu_temp(),
-        npu_temp_c=None,  # TODO: Hailo temperature via HailoRT
+        npu_temp_c=await _read_npu_temp(),
         uptime_seconds=round(time.time() - _START_TIME, 1),
         fps=round(
             stream_service.fps if settings.inference_engine == "hailo" else camera_service.fps, 1
