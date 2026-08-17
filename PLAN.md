@@ -276,7 +276,7 @@ Text frame = JSON detection array
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/system/health` | CPU temp, NPU temp, uptime, FPS |
+| GET | `/api/system/health` | CPU temp, uptime, FPS (NPU temp always null — Hailo-8L has no temp API in HailoRT 4.23) |
 | GET | `/api/system/config` | Current config (network mode, model, etc.) |
 | PATCH | `/api/system/config` | Update config |
 
