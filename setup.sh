@@ -80,6 +80,9 @@ EOF
     python -m pip check 2>&1 \
         | grep -vE "^(types-|apt-listchanges)" \
         | sed 's/^/pip check: /' || true
+    echo "Note: resolver warnings during [3/4] about the system numpy/types-* are"
+    echo "      expected (--system-site-packages venv) — the venv's numpy shown above"
+    echo "      is what actually runs."
 
     touch "$MARKER"
     echo
