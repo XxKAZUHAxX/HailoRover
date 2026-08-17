@@ -25,17 +25,16 @@ docker compose up -d
 ```
 
 ### Hailo NPU (bare-metal, recommended for the AI Hat)
-Runs the server + GStreamer inference pipeline inside the Pi's `venv_hailo_apps`
-(hailo-apps 26.03, Trixie). Full setup in [hailo-setup.md](raspi/docs/hailo-setup.md).
+Runs the server + GStreamer inference pipeline inside `hailo-apps/venv_hailo_apps`
+(hailo-apps 26.3, Trixie). Full guide in [hailo-setup.md](raspi/docs/hailo-setup.md).
 
 ```bash
-cd ~/hailo-apps && source setup_env.sh          # activates venv_hailo_apps
-cd ~/HailoRover
-pip install -r raspi/server/requirements.txt
-pip install -e raspi/hailo-layer
+git clone https://github.com/hailo-ai/hailo-apps.git   # inside the repo root, once
+bash setup.sh                                          # everything else, in one shot
+source setup.sh                                        # activate the venv (installs if missing)
 
 cd raspi/server
-cp .env.example .env                            # set INFERENCE_ENGINE=hailo
+cp .env.example .env                                   # set INFERENCE_ENGINE=hailo
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 

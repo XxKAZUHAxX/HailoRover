@@ -1,166 +1,101 @@
 # Hailo AI Hat Setup Guide
 
-This guide covers the **actual stack in use** on the vehicle's Pi: Hailo AI HAT+ (Hailo-8L, 26 TOPS) on Raspberry Pi 5 with **hailo-apps** (successor of the deprecated `hailo-rpi5-examples`).
+Actual stack on the vehicle's Pi: Hailo AI HAT+ (Hailo-8L, 26 TOPS) on
+Raspberry Pi 5 with **hailo-apps** (successor of the deprecated
+`hailo-rpi5-examples`).
 
 ## Version pairing — do not drift
 
 | Component | Version |
 |---|---|
-| hailo-apps | 26.03.x |
+| hailo-apps | 26.3.x |
 | HailoRT | 4.23.0 |
 | TAPPAS (postprocess) | 5.1.0 |
 | Raspberry Pi OS | Trixie (64-bit), Python 3.13 |
-| venv | `venv_hailo_apps` (created by `install.sh`) |
-| hailo-layer (this repo) | 0.1.x — requires hailo-apps `>=26.03.0,<26.04` |
+| hailo-layer (this repo) | 0.1.x — requires hailo-apps `>=26.3.0,<26.4.0` |
 
-Mixing versions breaks things in confusing ways — e.g. old infra tags with TAPPAS 5.1 fail the C++ postprocess compile (`'class HailoTensor' has no member named 'vstream_info'`).
+Mixing versions breaks confusingly — old infra tags with TAPPAS 5.1 fail the
+C++ postprocess compile (`'class HailoTensor' has no member named 'vstream_info'`).
 
 ---
 
-## 1. Enable PCIe Gen 3
+## 1. Enable PCIe Gen 3 (once)
 
 ```bash
-sudo nano /boot/firmware/config.txt
-```
-
-Add at the end:
-
-```
-# Enable PCIe Gen 3 for Hailo AI Hat
-dtparam=pciex1_gen=3
-```
-
-Reboot, then verify:
-
-```bash
+sudo nano /boot/firmware/config.txt    # add: dtparam=pciex1_gen=3
 sudo reboot
-lspci | grep Hailo   # Expected: Hailo Technologies Ltd. Device ...
+lspci | grep Hailo                     # device visible
 ```
 
 ---
 
-## 2. Install hailo-apps
+## 2. One-shot setup
+
+hailo-apps lives **inside this repo** (`hailo-apps/`, gitignored). Clone it
+once, then run `setup.sh` for everything:
 
 ```bash
-cd ~
+cd ~/Documents/Projects/HailoRover
 git clone https://github.com/hailo-ai/hailo-apps.git
-cd hailo-apps
-sudo ./install.sh
+bash setup.sh
 ```
 
-What this does:
+`setup.sh` runs, in order:
 
-1. Installs HailoRT + TAPPAS system packages (apt)
-2. Creates the virtual environment `venv_hailo_apps`
-3. `pip install -e .` (hailo-apps is installed **editable** — its source is the clone)
-4. Post-install (`hailo-post-install`): downloads ~1.5 GB of models to
-   `/usr/local/hailo/resources` and compiles the C++ postprocess `.so` files to
-   `/usr/lib/aarch64-linux-gnu/hailo/tappas/post_processes`
+1. `sudo ./install.sh` — HailoRT + TAPPAS (apt), `venv_hailo_apps`, editable
+   install, post-install (~1.5 GB models → `/usr/local/hailo/resources`,
+   C++ postprocess `.so` → `/usr/lib/aarch64-linux-gnu/hailo/tappas/post_processes`)
+2. Editable-install refresh — repairs absolute paths if the clone was moved
+3. Server requirements (+ `contextlib2`, `future` for the hailoRT wheel)
+4. `pip install -e raspi/hailo-layer`
 
-> **The resource download prints no progress** — only URL checks. It looks
-> stuck but isn't. Verify with `du -sh /usr/local/hailo/resources` twice
-> (should grow). Post-install is re-runnable and skips existing files:
-> `source setup_env.sh && hailo-post-install`
+Re-runnable; downloads and steps already done are skipped. The resource
+download prints no progress — it looks stuck but isn't (`du -sh
+/usr/local/hailo/resources` twice to confirm growth).
 
----
-
-## 3. Verify the stack
+Activate the venv anytime, from anywhere in the repo (fast — detects an
+existing install and skips straight to activation):
 
 ```bash
-cd ~/hailo-apps
-source setup_env.sh          # activates venv_hailo_apps
-
-hailortcli scan              # should show the Hailo-8L device
-hailo-post-install --help    # resources check (installs if needed)
-
-# Interactive sanity check — shows a window with live detections:
-hailo-detect --input /dev/video0
-# (Ctrl-C to stop; arch is auto-detected from /usr/local/hailo/resources/.env)
+source setup.sh
 ```
 
 ---
 
-## 4. Install this project into venv_hailo_apps
+## 3. Run
 
 ```bash
-cd ~/HailoRover              # this repo's checkout on the Pi
-git checkout feature/hailo-inference-layer
+source setup.sh
+hailo-smoke --hef-path yolov8m --input /dev/video0 --run-time 30   # pipeline check
 
-# Activate the Hailo venv without leaving the repo (wrapper for ~/hailo-apps/venv_hailo_apps)
-source setup_env.sh
-
-# Server deps (note: opencv-python gets replaced by opencv-python-headless — expected)
-pip install -r raspi/server/requirements.txt
-
-# hailoRT wheel deps that may be missing from the venv (harmless if already present)
-pip install contextlib2 future
-
-# The Option B inference layer (editable)
-pip install -e raspi/hailo-layer
-```
-
-> **numpy constraint**: HailoRT 4.23 requires `numpy<2` — the server's
-> `requirements.txt` pins `numpy>=1.26,<2` for exactly this reason. Do not
-> `pip install -U numpy` in this venv.
-
----
-
-## 5. Run with the Hailo engine
-
-```bash
-cd ~/HailoRover/raspi/server
-
-# Create .env from the example:
-cp .env.example .env
-# edit: INFERENCE_ENGINE=hailo  (HEF_PATH=yolov8m is the default)
-
+cd raspi/server
+cp .env.example .env                        # set INFERENCE_ENGINE=hailo
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-Startup log should show `Inference engine: Hailo NPU (GStreamer pipeline takeover)`.
-Open `http://<pi-ip>:8000` in a browser.
-
-### Standalone smoke test (no server)
-
-```bash
-hailo-smoke --hef-path yolov8m --input /dev/video0 --width 640 --height 480 --run-time 30
-# Expected: "SMOKE OK: N frames in 30s (... fps), M detections total"
+# → log: "Inference engine: Hailo NPU (GStreamer pipeline takeover)"
+# → browser: http://<pi-ip>:8000 (build the frontend once: cd ../frontend && npm run build)
 ```
 
 ---
 
-## 6. Upgrading hailo-apps
+## 4. Upgrading hailo-apps
 
-1. `cd ~/hailo-apps && git fetch --tags && git checkout <new-tag> && pip install -e .`
-   (check tags first — some have a `v` prefix, some don't)
-2. Bump `HAILO_APPS_MIN_VERSION` / `HAILO_APPS_MAX_VERSION` in
+1. `cd hailo-apps && git fetch --tags && git checkout <new-tag>` (check tags
+   first — some have a `v` prefix, some don't), then `bash ../setup.sh`
+2. Bump `HAILO_APPS_MIN/MAX_VERSION` in
    `raspi/hailo-layer/src/hailo_layer/pipeline/hailo_compat.py`
 3. Review that one file against the release notes — **all** hailo-apps imports
-   in this project flow through `hailo_compat.py`
+   flow through it
 4. `hailo-smoke --hef-path yolov8m --input /dev/video0 --run-time 30`
 
 ---
 
-## 7. Troubleshooting
+## 5. Troubleshooting
 
-### Hailo device not found
-- Check PCIe connection — reseat the AI Hat
-- Verify `/boot/firmware/config.txt` has `dtparam=pciex1_gen=3`
-- Run `sudo dmesg | grep -i hailo` for kernel messages
-
-### Resource download stalled
-- Check growth: `du -sh /usr/local/hailo/resources` twice
-- Ctrl+C and re-run `hailo-post-install` (resumes/skips existing files)
-
-### `TAPPAS_POST_PROC_DIR environment variable not set`
-- The app self-loads `/usr/local/hailo/resources/.env`; if it's missing, re-run
-  `source setup_env.sh && hailo-post-install` from the hailo-apps clone
-
-### Server logs "Hailo pipeline produced no frames"
-- Camera busy/unplugged, or the HEF missing — check the hailo-apps logs and
-  that `/usr/local/hailo/resources/models/hailo8l/yolov8m.hef` exists
-
-### Low inference FPS
-- Confirm PCIe Gen 3 is active: `sudo lspci -vv | grep -i "Speed"`
-- Check power supply — RPi 5 + AI Hat can draw significant current
-- Monitor temperature: `hailortcli fw-control read-temperature`
+| Symptom | Fix |
+|---|---|
+| `hailortcli scan` empty | reseat HAT; check `dtparam=pciex1_gen=3`; `sudo dmesg \| grep -i hailo` |
+| Resource download "stuck" | it's silent — check `du` growth; Ctrl+C + re-run `bash setup.sh` |
+| `TAPPAS_POST_PROC_DIR` missing | re-run `bash setup.sh` (app self-loads `/usr/local/hailo/resources/.env`) |
+| Server: "Hailo pipeline produced no frames" | camera busy/unplugged, or HEF missing from `/usr/local/hailo/resources/models/hailo8/` |
+| Low FPS | PCIe Gen 3 active? `sudo lspci -vv \| grep -i Speed`; check power supply |
+| `numpy<2` conflict | never `pip install -U numpy` in the venv — pin is `>=1.26,<2` (HailoRT constraint) |

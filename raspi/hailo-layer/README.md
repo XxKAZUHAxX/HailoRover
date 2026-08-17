@@ -29,8 +29,8 @@ detection server. A separate package (Option B) built on top of
 ## Quick start (on the Pi)
 
 ```bash
-source ~/hailo-apps/setup_env.sh            # activates venv_hailo_apps
-pip install -e raspi/hailo-layer
+bash setup.sh                               # repo root: installs hailo-apps + this package
+source setup.sh                             # activates hailo-apps/venv_hailo_apps
 hailo-smoke --hef-path yolov8m --input /dev/video0 --run-time 30
 ```
 
