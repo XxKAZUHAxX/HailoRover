@@ -57,16 +57,28 @@ async def _read_npu_temp() -> float | None:
 
     value: float | None = None
     if settings.inference_engine == "hailo":
+        proc = None
         try:
             proc = await asyncio.create_subprocess_exec(
                 "hailortcli", "fw-control", "read-temperature",
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.PIPE,
             )
-            out, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+            out, err = await asyncio.wait_for(proc.communicate(), timeout=5.0)
             value = _parse_npu_temp(out.decode(errors="ignore"))
-        except (OSError, asyncio.TimeoutError):
-            pass  # hailortcli missing or device unavailable — stay None
+            if value is None:
+                logger.warning(
+                    "NPU temp read failed (exit=%s): %s",
+                    proc.returncode,
+                    (out + err).decode(errors="ignore").strip().replace("\n", " ")[:200],
+                )
+        except (OSError, asyncio.TimeoutError) as e:
+            logger.warning("NPU temp read unavailable: %s", e)
+            if proc is not None:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
 
     _npu_temp_cache["value"] = value
     _npu_temp_cache["at"] = now
