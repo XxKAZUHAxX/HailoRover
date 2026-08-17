@@ -55,9 +55,29 @@ install_all() {
     python -m pip install -r "$SCRIPT_DIR/raspi/server/requirements.txt" --quiet || die "requirements install failed"
     python -m pip install contextlib2 future --quiet || die "hailoRT deps failed"
 
+    # scipy >=1.15 requires numpy>=2 — pin it down to stay on the numpy 1.x line
+    if python -c "import scipy" 2>/dev/null; then
+        python -m pip install "scipy>=1.13,<1.15" --quiet || die "scipy downgrade failed"
+    fi
+
+    # Silence the stray typing-stubs package hailo-apps pulls in (runtime-irrelevant)
+    python -m pip uninstall -y types-seaborn --quiet 2>/dev/null || true
+
     # 4) The Option B inference layer
     echo "[4/4] hailo-layer..."
     python -m pip install -e "$SCRIPT_DIR/raspi/hailo-layer" --quiet || die "hailo-layer install failed"
+
+    # Verify the constraints that matter at runtime
+    echo
+    echo "Verifying..."
+    python - <<'EOF' || die "numpy constraint violated (HailoRT requires <2)"
+import numpy as np
+v = tuple(int(x) for x in np.__version__.split(".")[:2])
+assert v[0] == 1, f"numpy {np.__version__} is >=2"
+print(f"numpy {np.__version__} OK")
+EOF
+    python -c "import hailo; print('hailo import OK')" || die "import hailo failed"
+    python -m pip check 2>&1 | sed 's/^/pip check: /' || true
 
     touch "$MARKER"
     echo

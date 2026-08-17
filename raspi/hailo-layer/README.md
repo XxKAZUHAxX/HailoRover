@@ -24,7 +24,8 @@ detection server. A separate package (Option B) built on top of
 | 0.1.x | 26.03.x | 4.23 | 5.1 | Raspberry Pi OS Trixie (Python 3.13) |
 
 `hailo_layer.pipeline.runner` enforces the hailo-apps range at runtime
-(`>=26.03.0,<26.04`).
+(`>=26.03.0,<26.04`). On the Pi, numpy is pinned `<2` (HailoRT 4.23
+constraint — see pyproject environment markers); Windows dev can use 2.x.
 
 ## Quick start (on the Pi)
 

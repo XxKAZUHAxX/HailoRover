@@ -8,7 +8,10 @@ version = "0.1.0"
 description = "Hailo GStreamer inference layer (pipeline-takeover mode) for the HailoRover server"
 requires-python = ">=3.11"
 dependencies = [
-    "numpy>=2.0",
+    # HailoRT 4.23 requires numpy<2 on the Pi — keep the 1.x line there.
+    # Windows dev (unit tests only) can use numpy 2.x.
+    "numpy>=1.26,<2; sys_platform != 'win32'",
+    "numpy>=2.0; sys_platform == 'win32'",
     "opencv-python-headless>=4.10,<5",
 ]
 
