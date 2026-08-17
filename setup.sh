@@ -52,16 +52,13 @@ install_all() {
 
     # 3) Server dependencies (+ hailoRT wheel deps that may be missing)
     echo "[3/4] Server requirements..."
-    python -m pip install -r "$SCRIPT_DIR/raspi/server/requirements.txt" --quiet || die "requirements install failed"
+    # hailoRT wheel deps first, so the requirements resolve without conflicts
     python -m pip install contextlib2 future --quiet || die "hailoRT deps failed"
-
     # scipy >=1.15 requires numpy>=2 — pin it down to stay on the numpy 1.x line
     if python -c "import scipy" 2>/dev/null; then
         python -m pip install "scipy>=1.13,<1.15" --quiet || die "scipy downgrade failed"
     fi
-
-    # Silence the stray typing-stubs package hailo-apps pulls in (runtime-irrelevant)
-    python -m pip uninstall -y types-seaborn --quiet 2>/dev/null || true
+    python -m pip install -r "$SCRIPT_DIR/raspi/server/requirements.txt" --quiet || die "requirements install failed"
 
     # 4) The Option B inference layer
     echo "[4/4] hailo-layer..."
@@ -77,7 +74,12 @@ assert v[0] == 1, f"numpy {np.__version__} is >=2"
 print(f"numpy {np.__version__} OK")
 EOF
     python -c "import hailo; print('hailo import OK')" || die "import hailo failed"
-    python -m pip check 2>&1 | sed 's/^/pip check: /' || true
+    # The venv is created with --system-site-packages, so apt-installed typing
+    # stubs (types-*) and apt tools (apt-listchanges) show up in pip check —
+    # they are system noise, not venv problems. Filter them out.
+    python -m pip check 2>&1 \
+        | grep -vE "^(types-|apt-listchanges)" \
+        | sed 's/^/pip check: /' || true
 
     touch "$MARKER"
     echo
