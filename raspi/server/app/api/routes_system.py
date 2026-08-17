@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
-import re
 import time
 from pathlib import Path
 
@@ -35,62 +33,16 @@ def _read_cpu_temp() -> float | None:
     return None
 
 
-_NPU_TEMP_TTL_S = 15.0  # health is polled every ~5s; don't spawn hailortcli that often
-_npu_temp_cache: dict[str, object] = {"value": None, "at": 0.0}
-
-
-def _parse_npu_temp(text: str) -> float | None:
-    """Extract the temperature from `hailortcli fw-control read-temperature` output."""
-    match = re.search(r"([\d.]+)\s*C", text)
-    return float(match.group(1)) if match else None
-
-
-async def _read_npu_temp() -> float | None:
-    """Read Hailo NPU temperature via hailortcli (None when unavailable).
-
-    The firmware-control interface works while the inference pipeline is
-    running, so this is safe to call concurrently with streaming.
-    """
-    now = time.monotonic()
-    if now - float(_npu_temp_cache["at"]) < _NPU_TEMP_TTL_S:  # type: ignore[arg-type]
-        return _npu_temp_cache["value"]  # type: ignore[return-value]
-
-    value: float | None = None
-    if settings.inference_engine == "hailo":
-        proc = None
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "hailortcli", "fw-control", "read-temperature",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            out, err = await asyncio.wait_for(proc.communicate(), timeout=5.0)
-            value = _parse_npu_temp(out.decode(errors="ignore"))
-            if value is None:
-                logger.warning(
-                    "NPU temp read failed (exit=%s): %s",
-                    proc.returncode,
-                    (out + err).decode(errors="ignore").strip().replace("\n", " ")[:200],
-                )
-        except (OSError, asyncio.TimeoutError) as e:
-            logger.warning("NPU temp read unavailable: %s", e)
-            if proc is not None:
-                try:
-                    proc.kill()
-                except Exception:
-                    pass
-
-    _npu_temp_cache["value"] = value
-    _npu_temp_cache["at"] = now
-    return value
-
-
 @router.get("/health", response_model=SystemHealth)
 async def health() -> SystemHealth:
     """System health snapshot: temps, uptime, FPS, engine status."""
     return SystemHealth(
         cpu_temp_c=_read_cpu_temp(),
-        npu_temp_c=await _read_npu_temp(),
+        # Always None: the Hailo-8L exposes no user-accessible temperature API
+        # in HailoRT 4.23 — no fw-control subcommand, no Python binding API, and
+        # the PM Values in `fw-control identify` are undocumented internal
+        # counters that must not be interpreted as temperature.
+        npu_temp_c=None,
         uptime_seconds=round(time.time() - _START_TIME, 1),
         fps=round(
             stream_service.fps if settings.inference_engine == "hailo" else camera_service.fps, 1
