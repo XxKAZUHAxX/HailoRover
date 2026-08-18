@@ -47,6 +47,7 @@ if(NOT BUILD_TESTING)
     include(cmake/post_build.cmake)
 
     add_subdirectory(ext)        # vendored drivers + middlewares
+    add_subdirectory(lib)        # hardware-independent logic
     add_subdirectory(src)        # firmware application
 else()
     # Host-test build (x86_64 preset, BUILD_TESTING=ON).

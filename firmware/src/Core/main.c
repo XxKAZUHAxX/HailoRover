@@ -1,13 +1,25 @@
 /**
- * HailoRover motor-controller firmware — STM32F446RE.
+ * main.c — HailoRover motor-controller firmware entry (STM32F446RE).
  *
- * M1 milestone: 180 MHz clock + LED heartbeat.
- * M2 adds: USART6 protocol link, TIM2 PWM motor control, FreeRTOS tasks.
+ * Boot order:
+ *   1. HAL_Init (TIM6 timebase — SysTick belongs to FreeRTOS)
+ *   2. SystemClock_Config (HSE 8 MHz → PLL → 180 MHz)
+ *   3. uart_link_init (USART6, first per-byte RX armed)
+ *   4. motor_init (coast + STBY high + 20 kHz PWM)
+ *   5. app_freertos_init (static tasks/queues) → scheduler start
+ *
+ * Safe idle: with the Pi's motor_enabled=false the link is silent and the
+ * motors remain coasted — the watchdog never even triggers.
  */
 
+#include "FreeRTOS.h"
+#include "task.h"
+
 #include "main.h"
+#include "motor_control.h"
 #include "pin_config.h"
 #include "stm32f4xx_hal.h"
+#include "uart_link.h"
 
 static void MX_GPIO_Init(void)
 {
@@ -60,10 +72,14 @@ int main(void)
     SystemClock_Config();
     MX_GPIO_Init();
 
-    for (;;) {
-        HAL_GPIO_TogglePin(LED_GPIO_PORT, LED_GPIO_PIN);
-        HAL_Delay(500);
-    }
+    uart_link_init();
+    motor_init();
+    app_freertos_init();
+
+    vTaskStartScheduler();
+
+    /* Never reached — scheduler failure */
+    Error_Handler();
 }
 
 void Error_Handler(void)
