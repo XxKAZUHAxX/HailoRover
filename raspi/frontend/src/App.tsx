@@ -69,12 +69,12 @@ export default function App() {
 
         {/* Right: Panels */}
         <div className="flex flex-col gap-4 lg:w-64 flex-shrink-0">
+          <SystemStatus health={systemHealth} onRefresh={fetchHealth} />
           <DetectionPanel
             detections={detections}
             fps={fps}
             inferenceMs={inferenceMs}
           />
-          <SystemStatus health={systemHealth} onRefresh={fetchHealth} />
 
           {/* Quick stop button */}
           <button

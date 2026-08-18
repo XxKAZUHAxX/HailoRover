@@ -5,6 +5,19 @@ interface SystemStatusProps {
   onRefresh: () => void;
 }
 
+// °C thresholds: green → amber (warn) → red (danger + hot warning)
+const CPU_WARN_C = 55;
+const CPU_DANGER_C = 70;
+const NPU_WARN_C = 65;
+const NPU_DANGER_C = 80;
+
+function tempColor(temp: number | null, warnC: number, dangerC: number): string {
+  if (temp === null) return "text-gray-300";
+  if (temp >= dangerC) return "text-danger";
+  if (temp >= warnC) return "text-warning";
+  return "text-success";
+}
+
 export function SystemStatus({ health, onRefresh }: SystemStatusProps) {
   if (!health) {
     return (
@@ -25,12 +38,17 @@ export function SystemStatus({ health, onRefresh }: SystemStatusProps) {
     );
   }
 
-  const tempColor =
-    health.cpu_temp_c !== null && health.cpu_temp_c > 70
-      ? "text-danger"
-      : health.cpu_temp_c !== null && health.cpu_temp_c > 55
-        ? "text-warning"
-        : "text-success";
+  const cpuTemp = health.cpu_temp_c;
+  const npuTemp = health.npu_temp_c;
+
+  // Danger-threshold warnings — shown when the chip is actually hot
+  const hotWarnings: string[] = [];
+  if (cpuTemp !== null && cpuTemp >= CPU_DANGER_C) {
+    hotWarnings.push(`⚠ CPU hot (${cpuTemp.toFixed(1)}°C)`);
+  }
+  if (npuTemp !== null && npuTemp >= NPU_DANGER_C) {
+    hotWarnings.push(`⚠ NPU hot (${npuTemp.toFixed(1)}°C)`);
+  }
 
   const uptimeMins = Math.floor(health.uptime_seconds / 60);
 
@@ -51,14 +69,14 @@ export function SystemStatus({ health, onRefresh }: SystemStatusProps) {
       <dl className="space-y-1 text-xs font-mono">
         <div className="flex justify-between">
           <dt className="text-gray-500">CPU Temp</dt>
-          <dd className={tempColor}>
-            {health.cpu_temp_c !== null ? `${health.cpu_temp_c.toFixed(1)}°C` : "—"}
+          <dd className={tempColor(cpuTemp, CPU_WARN_C, CPU_DANGER_C)}>
+            {cpuTemp !== null ? `${cpuTemp.toFixed(1)}°C` : "—"}
           </dd>
         </div>
         <div className="flex justify-between">
           <dt className="text-gray-500">NPU Temp</dt>
-          <dd className="text-gray-300">
-            {health.npu_temp_c !== null ? `${health.npu_temp_c.toFixed(1)}°C` : "—"}
+          <dd className={tempColor(npuTemp, NPU_WARN_C, NPU_DANGER_C)}>
+            {npuTemp !== null ? `${npuTemp.toFixed(1)}°C` : "—"}
           </dd>
         </div>
         <div className="flex justify-between">
@@ -78,6 +96,12 @@ export function SystemStatus({ health, onRefresh }: SystemStatusProps) {
           <dd className="text-gray-300">{health.network_mode}</dd>
         </div>
       </dl>
+
+      {hotWarnings.length > 0 && (
+        <p className="mt-2 text-xs font-mono text-danger border border-danger/50 bg-danger/10 rounded px-2 py-1 animate-pulse">
+          {hotWarnings.join("   ")}
+        </p>
+      )}
     </div>
   );
 }

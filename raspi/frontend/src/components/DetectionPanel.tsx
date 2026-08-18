@@ -31,9 +31,10 @@ export function DetectionPanel({ detections, fps, inferenceMs }: DetectionPanelP
         </div>
       </div>
 
-      {/* Object count list */}
+      {/* Object count list — fixed-height scrollable so new detections
+          never shift the cards below it */}
       {Object.entries(counts).length > 0 ? (
-        <ul className="space-y-1">
+        <ul className="space-y-1 max-h-48 overflow-y-auto pr-1">
           {Object.entries(counts)
             .sort(([, a], [, b]) => b - a)
             .map(([className, count]) => (
