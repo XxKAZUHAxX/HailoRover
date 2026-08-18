@@ -38,11 +38,11 @@
   ],
   "buildPresets": [
     {
-      "name": "STM32F4-Release",
+      "name": "F4-Release",
       "configurePreset": "STM32F4-Release"
     },
     {
-      "name": "STM32F4-Debug",
+      "name": "F4-Debug",
       "configurePreset": "STM32F4-Debug"
     }
   ]

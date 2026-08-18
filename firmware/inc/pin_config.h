@@ -17,7 +17,12 @@
 #define UART_GPIO_AF          GPIO_AF8_USART6
 #define UART_BAUDRATE         115200U
 
-/* ---------------- Motor PWM — TIM2 CH1/CH2 on PA0/PA1 (AF1) ----------------
+/* ---------------- Motor control (DRV8871 H-bridge module) ----------------
+ * Per motor: PWM pin → IN1, direction GPIO → IN2. No standby pin.
+ *   forward: IN2 LOW,  duty = speed%
+ *   reverse: IN2 HIGH, duty = (100 - speed)%   (0% duty = full reverse)
+ *   coast:   IN2 HIGH, duty = 100%             (DRV8871: INs HIGH-HIGH = coast)
+ *   brake:   IN2 LOW,  duty = 0%               (DRV8871: INs LOW-LOW  = brake)
  * TIM2 is on APB1: timer clock = 90 MHz at 180 MHz SYSCLK. */
 #define MOTOR_TIM                      TIM2
 #define MOTOR_PWM_TIMER_CLOCK_HZ       90000000UL
@@ -26,28 +31,17 @@
 #define MOTOR_PWM_LEFT_CHANNEL         TIM_CHANNEL_1
 #define MOTOR_PWM_RIGHT_CHANNEL        TIM_CHANNEL_2
 #define MOTOR_PWM_GPIO_PORT            GPIOA
-#define MOTOR_PWM_LEFT_PIN             GPIO_PIN_0   /* A0 */
-#define MOTOR_PWM_RIGHT_PIN            GPIO_PIN_1   /* A1 */
+#define MOTOR_PWM_LEFT_PIN             GPIO_PIN_0   /* A0 → left IN1 */
+#define MOTOR_PWM_RIGHT_PIN            GPIO_PIN_1   /* A1 → right IN1 */
 #define MOTOR_PWM_GPIO_AF              GPIO_AF1_TIM2
+
+#define MOTOR_L_DIR_PORT  GPIOC
+#define MOTOR_L_DIR_PIN   GPIO_PIN_0   /* A5 → left IN2 */
+#define MOTOR_R_DIR_PORT  GPIOC
+#define MOTOR_R_DIR_PIN   GPIO_PIN_2   /* → right IN2 */
 
 /* Alternative for 180 MHz timer clock (ARR 8999): TIM1 CH1/CH2 on PA8/PA9 (AF1),
  * needs MOE enable (HAL_TIM_PWM_Start handles it). */
-
-/* ---------------- Direction + standby (TB6612FNG) ----------------
- * AIN1/AIN2 = left, BIN1/BIN2 = right, STBY must stay HIGH. */
-#define MOTOR_L_IN1_PORT  GPIOC
-#define MOTOR_L_IN1_PIN   GPIO_PIN_0   /* A5 */
-#define MOTOR_L_IN2_PORT  GPIOC
-#define MOTOR_L_IN2_PIN   GPIO_PIN_1   /* A4 */
-#define MOTOR_R_IN1_PORT  GPIOC
-#define MOTOR_R_IN1_PIN   GPIO_PIN_2
-#define MOTOR_R_IN2_PORT  GPIOC
-#define MOTOR_R_IN2_PIN   GPIO_PIN_3
-#define MOTOR_STBY_PORT   GPIOC
-#define MOTOR_STBY_PIN    GPIO_PIN_4
-
-/* DRV8871 alternative: one PH pin per motor (replaces IN2), no STBY —
- * see motor_control.c comments. */
 
 /* ---------------- Diagnostics LED (on-board LD2) ---------------- */
 #define LED_GPIO_PORT  GPIOA

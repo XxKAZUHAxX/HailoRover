@@ -144,14 +144,15 @@ USART6 IRQ (priority 5) ──rx_q──▶ uart_rx_task (2) ──motor_q──
 ```
 
 - **Build**: `cmake --preset STM32F4-Release && cmake --build --preset
-  STM32F4-Release` → `build/Release/artifacts/motor-controller_<version>.bin`
+  F4-Release` → `build/Release/artifacts/motor-controller_<version>.bin`
   (arm-none-eabi-gcc 15.2.1, Ninja). Flash via STM32CubeProgrammer/OpenOCD.
 - **RTOS**: FreeRTOS V11.3.0, **static allocation only** (no heap), 1 kHz
   tick, HAL timebase on TIM6 (SysTick owned by FreeRTOS; SVC/PendSV/SysTick
   handlers bridged in `stm32f4xx_it.c`).
-- **Motors**: TB6612FNG via TIM2 PWM 20 kHz (PA0/PA1, ARR 4499 @ 90 MHz APB1
-  timer clock), direction PC0–PC3, STBY PC4 (HIGH after init). Coast = INs
-  low; short-brake = INs high. Pin map in `firmware/inc/pin_config.h`
+- **Motors**: DRV8871 H-bridge modules via TIM2 PWM 20 kHz (PA0/PA1 → IN1,
+  ARR 4499 @ 90 MHz APB1 timer clock), direction GPIOs PC0/PC2 → IN2, no
+  standby pin. Coast = INs HIGH-HIGH; short-brake = INs LOW-LOW (opposite of
+  the old TB6612FNG — don't mix). Pin map in `firmware/inc/pin_config.h`
   (Nucleo-F446RE defaults, adjustable).
 - **Link**: USART6 PC6/PC7 (AF8) at 115200 8N1 → Pi `/dev/ttyAMA0` (USART2
   is the ST-Link VCP — avoid). Firmware idles safely with a silent link

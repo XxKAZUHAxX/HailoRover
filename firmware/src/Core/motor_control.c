@@ -1,16 +1,19 @@
 /**
- * motor_control.c — TB6612FNG dual H-bridge via TIM2 PWM + direction GPIOs.
+ * motor_control.c — DRV8871 dual H-bridge via TIM2 PWM + direction GPIOs.
  *
  * Wiring (Nucleo-F446RE defaults, see pin_config.h):
- *   PWMA ← PA0 (TIM2_CH1)   PWMB ← PA1 (TIM2_CH2)
- *   AIN1 ← PC0  AIN2 ← PC1  BIN1 ← PC2  BIN2 ← PC3   STBY ← PC4
- *   VMOT = 12 V motor supply, VCC = 3.3 V logic. STBY stays HIGH after init.
+ *   Left : PWM PA0 (TIM2_CH1) → IN1,   dir PC0 → IN2
+ *   Right: PWM PA1 (TIM2_CH2) → IN1,   dir PC2 → IN2
+ *   VMOT = motor supply (12 V here), VCC = 3.3 V logic.
+ *   DRV8871 has NO standby pin.
  *
- * TB6612FNG truth table (per channel): IN1/IN2 LOW-LOW = coast, HIGH-HIGH =
- * short brake, HIGH-LOW / LOW-HIGH = CW/CCW with PWM on the enabled input.
- *
- * DRV8871 alternative (documented, not wired): one PH pin per motor replaces
- * IN2 (PH LOW = reverse), EN ties to the PWM pin, no STBY pin.
+ * DRV8871 truth table (IN1 = PWM pin, IN2 = direction GPIO):
+ *   forward: IN2 LOW,  duty = speed%        (IN1 PWM)
+ *   reverse: IN2 HIGH, duty = (100-speed)%  (IN1 PWM; 0% duty = full reverse)
+ *   coast:   IN2 HIGH, duty = 100%          (INs HIGH-HIGH = coast)
+ *   brake:   IN2 LOW,  duty = 0%            (INs LOW-LOW = short brake)
+ * NOTE: this is the OPPOSITE of the TB6612FNG (which coasts on LOW-LOW and
+ * brakes on HIGH-HIGH) — do not mix wiring semantics between the two.
  *
  * PWM: 20 kHz (ARR 4499 at the 90 MHz APB1 timer clock).
  */
@@ -21,17 +24,6 @@
 #include "pin_config.h"
 
 static TIM_HandleTypeDef htim2;
-
-/* Direction pin bundles */
-typedef struct {
-    GPIO_TypeDef *port1;
-    uint16_t      pin1;
-    GPIO_TypeDef *port2;
-    uint16_t      pin2;
-} motor_dir_pins_t;
-
-static const motor_dir_pins_t dir_left  = { MOTOR_L_IN1_PORT, MOTOR_L_IN1_PIN, MOTOR_L_IN2_PORT, MOTOR_L_IN2_PIN };
-static const motor_dir_pins_t dir_right = { MOTOR_R_IN1_PORT, MOTOR_R_IN1_PIN, MOTOR_R_IN2_PORT, MOTOR_R_IN2_PIN };
 
 static uint16_t scale_duty(uint8_t speed)
 {
@@ -45,25 +37,21 @@ static uint16_t scale_duty(uint8_t speed)
     return (uint16_t)d;
 }
 
-static void set_dir(const motor_dir_pins_t *pins, uint8_t in1, uint8_t in2)
-{
-    HAL_GPIO_WritePin(pins->port1, pins->pin1, (in1 != 0U) ? GPIO_PIN_SET : GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(pins->port2, pins->pin2, (in2 != 0U) ? GPIO_PIN_SET : GPIO_PIN_RESET);
-}
-
-static void apply_channel(const motor_dir_pins_t *dir, uint32_t channel, int8_t speed)
+static void apply_channel(GPIO_TypeDef *dir_port, uint16_t dir_pin,
+                          uint32_t channel, int8_t speed)
 {
     uint16_t duty;
 
     if (speed > 0) {
-        set_dir(dir, 1U, 0U);                    /* forward */
+        HAL_GPIO_WritePin(dir_port, dir_pin, GPIO_PIN_RESET);   /* forward */
         duty = scale_duty((uint8_t)speed);
     } else if (speed < 0) {
-        set_dir(dir, 0U, 1U);                    /* reverse */
-        duty = scale_duty((uint8_t)(-speed));
+        HAL_GPIO_WritePin(dir_port, dir_pin, GPIO_PIN_SET);     /* reverse */
+        /* Inverted duty: 0% duty = full reverse, 100% = coast */
+        duty = scale_duty((uint8_t)(100 - (uint8_t)(-speed)));
     } else {
-        set_dir(dir, 0U, 0U);                    /* coast */
-        duty = 0U;
+        HAL_GPIO_WritePin(dir_port, dir_pin, GPIO_PIN_SET);     /* coast */
+        duty = (uint16_t)MOTOR_PWM_PERIOD;                      /* IN1 HIGH */
     }
     __HAL_TIM_SET_COMPARE(&htim2, channel, duty);
 }
@@ -76,16 +64,14 @@ void motor_init(void)
     __HAL_RCC_GPIOC_CLK_ENABLE();
     __HAL_RCC_TIM2_CLK_ENABLE();
 
-    /* Direction pins: outputs LOW first (coast), before STBY goes HIGH */
-    gpio.Pin = MOTOR_L_IN1_PIN | MOTOR_L_IN2_PIN | MOTOR_R_IN1_PIN | MOTOR_R_IN2_PIN | MOTOR_STBY_PIN;
+    /* Direction pins: drive HIGH first = coast for both motors */
+    gpio.Pin = MOTOR_L_DIR_PIN | MOTOR_R_DIR_PIN;
     gpio.Mode = GPIO_MODE_OUTPUT_PP;
     gpio.Pull = GPIO_NOPULL;
     gpio.Speed = GPIO_SPEED_FREQ_MEDIUM;
     HAL_GPIO_Init(GPIOC, &gpio);
-
-    set_dir(&dir_left, 0U, 0U);
-    set_dir(&dir_right, 0U, 0U);
-    HAL_GPIO_WritePin(MOTOR_STBY_PORT, MOTOR_STBY_PIN, GPIO_PIN_SET);   /* STBY stays HIGH */
+    HAL_GPIO_WritePin(MOTOR_L_DIR_PORT, MOTOR_L_DIR_PIN, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(MOTOR_R_DIR_PORT, MOTOR_R_DIR_PIN, GPIO_PIN_SET);
 
     /* PWM pins PA0/PA1, AF1 */
     gpio.Pin = MOTOR_PWM_LEFT_PIN | MOTOR_PWM_RIGHT_PIN;
@@ -105,7 +91,7 @@ void motor_init(void)
 
     TIM_OC_InitTypeDef oc = {0};
     oc.OCMode = TIM_OCMODE_PWM1;
-    oc.Pulse = 0U;   /* coast at init */
+    oc.Pulse = 0U;   /* brake at init (INs LOW-LOW on DRV8871) */
     oc.OCPolarity = TIM_OCPOLARITY_HIGH;
     oc.OCFastMode = TIM_OCFAST_DISABLE;
 
@@ -117,28 +103,28 @@ void motor_init(void)
 
 void motor_set_left(int8_t speed)
 {
-    apply_channel(&dir_left, MOTOR_PWM_LEFT_CHANNEL, speed);
+    apply_channel(MOTOR_L_DIR_PORT, MOTOR_L_DIR_PIN, MOTOR_PWM_LEFT_CHANNEL, speed);
 }
 
 void motor_set_right(int8_t speed)
 {
-    apply_channel(&dir_right, MOTOR_PWM_RIGHT_CHANNEL, speed);
+    apply_channel(MOTOR_R_DIR_PORT, MOTOR_R_DIR_PIN, MOTOR_PWM_RIGHT_CHANNEL, speed);
 }
 
 void motor_stop(void)
 {
-    /* Coast: both INs low, PWM 0 */
-    set_dir(&dir_left, 0U, 0U);
-    set_dir(&dir_right, 0U, 0U);
-    __HAL_TIM_SET_COMPARE(&htim2, MOTOR_PWM_LEFT_CHANNEL, 0U);
-    __HAL_TIM_SET_COMPARE(&htim2, MOTOR_PWM_RIGHT_CHANNEL, 0U);
+    /* Coast: INs HIGH-HIGH on DRV8871 */
+    HAL_GPIO_WritePin(MOTOR_L_DIR_PORT, MOTOR_L_DIR_PIN, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(MOTOR_R_DIR_PORT, MOTOR_R_DIR_PIN, GPIO_PIN_SET);
+    __HAL_TIM_SET_COMPARE(&htim2, MOTOR_PWM_LEFT_CHANNEL, (uint32_t)MOTOR_PWM_PERIOD);
+    __HAL_TIM_SET_COMPARE(&htim2, MOTOR_PWM_RIGHT_CHANNEL, (uint32_t)MOTOR_PWM_PERIOD);
 }
 
 void motor_brake(void)
 {
-    /* Active short-brake: both INs high, PWM 0 */
-    set_dir(&dir_left, 1U, 1U);
-    set_dir(&dir_right, 1U, 1U);
+    /* Short brake: INs LOW-LOW on DRV8871 */
+    HAL_GPIO_WritePin(MOTOR_L_DIR_PORT, MOTOR_L_DIR_PIN, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(MOTOR_R_DIR_PORT, MOTOR_R_DIR_PIN, GPIO_PIN_RESET);
     __HAL_TIM_SET_COMPARE(&htim2, MOTOR_PWM_LEFT_CHANNEL, 0U);
     __HAL_TIM_SET_COMPARE(&htim2, MOTOR_PWM_RIGHT_CHANNEL, 0U);
 }

@@ -4,7 +4,7 @@
 #          ${PROJECT_NAME} executable; no add_library modules in the firmware.
 # Usage:
 #   cmake --preset STM32F4-Release
-#   cmake --build --preset STM32F4-Release
+#   cmake --build --preset F4-Release
 # Artifacts: build/<Config>/artifacts/motor-controller_<version>.{bin,hex}
 # Update note: new directories contribute via add_subdirectory + target_sources.
 

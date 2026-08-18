@@ -1,8 +1,9 @@
 /**
- * Motor Control — TB6612FNG / DRV8871 dual H-bridge interface
+ * Motor Control — DRV8871 dual H-bridge interface
  *
- * Differential drive: two motors, each with direction + PWM.
- * PWM frequency: 20 kHz (above audible range).
+ * Differential drive: two motors, each with a PWM input (IN1) and a
+ * direction GPIO (IN2). PWM frequency: 20 kHz (above audible range).
+ * Coast = INs HIGH-HIGH, brake = INs LOW-LOW (see motor_control.c).
  */
 
 #ifndef MOTOR_CONTROL_H
