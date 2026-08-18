@@ -45,7 +45,8 @@ class MotorStatus(BaseModel):
 
 class SystemHealth(BaseModel):
     cpu_temp_c: float | None = None
-    # Always None: Hailo-8L has no user-accessible temperature API in HailoRT 4.23
+    # Chip temperature (°C, average of the two on-chip TS sensors); None when
+    # unavailable (engine != hailo, or the device doesn't answer)
     npu_temp_c: float | None = None
     uptime_seconds: float
     fps: float
