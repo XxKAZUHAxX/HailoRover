@@ -106,10 +106,17 @@ UART at 115200 baud, 8N1, 3.3V logic (direct connection).
 
 | CMD | Name | Payload | Response | Description |
 |---|---|---|---|---|
-| `0x01` | DRIVE | `[left_speed int8] [right_speed int8]` | ACK/NACK | Set motor speeds (-100 to +100). Positive = forward on left motor. |
-| `0x02` | STOP | none | ACK/NACK | Immediate motor stop (coast). |
-| `0x03` | PING | none | `[status uint8]` | Health check. Status: 0=OK, 1=fault. |
-| `0x04` | BRAKE | none | ACK/NACK | Active braking (short motor leads). |
+| `0x01` | DRIVE | `[left_speed int8] [right_speed int8]` | none | Set motor speeds (-100 to +100). Positive = forward on left motor. |
+| `0x02` | STOP | none | none | Immediate motor stop (coast). |
+| `0x03` | PING | none | exactly one byte `0x00` | Health check (Pi reads 1 byte with a 50 ms timeout). |
+| `0x04` | BRAKE | none | none | Active braking (short motor leads). |
+
+Wire contract (supersedes the older ACK/NACK idea — the Pi never reads
+command responses): the STM32 replies ONLY to PING and **nothing else is ever
+transmitted** on the link. CRC-8-ATM (poly 0x07, init 0x00, MSB-first, no
+reflection/final-XOR) covers every frame byte **including 0xAA**; the C
+implementation is parity-verified against `uart_hal.py:_crc8()` by
+`firmware/tools/crc_parity_check.py`.
 
 ### Differential Drive Math (Server-Side)
 
@@ -120,6 +127,35 @@ Joystick 2 (left/right):       turn    = map(x_axis, [-1, 1], [-100, 100])
 left_speed  = clamp(forward + turn, -100, 100)
 right_speed = clamp(forward - turn, -100, 100)
 ```
+
+---
+
+## Firmware Architecture (STM32F446RE)
+
+Structure follows the platform-control CMake conventions: `ext/` (vendored
+HAL/CMSIS/FreeRTOS), `platform/` (linker + startup), `inc/` (central headers),
+`lib/` (hardware-independent logic), `src/Core/` (application).
+
+```
+USART6 IRQ (priority 5) ──rx_q──▶ uart_rx_task (2) ──motor_q──▶ motor_task (1)
+   HAL_UART_RxCpltCallback        PING → 0x00 reply only       DRIVE/STOP/BRAKE
+   → protocol_rx_byte()                                        + coast watchdog
+   → xQueueSendFromISR()                                       (500 ms, no DRIVE)
+```
+
+- **Build**: `cmake --preset STM32F4-Release && cmake --build --preset
+  STM32F4-Release` → `build/Release/artifacts/motor-controller_<version>.bin`
+  (arm-none-eabi-gcc 15.2.1, Ninja). Flash via STM32CubeProgrammer/OpenOCD.
+- **RTOS**: FreeRTOS V11.3.0, **static allocation only** (no heap), 1 kHz
+  tick, HAL timebase on TIM6 (SysTick owned by FreeRTOS; SVC/PendSV/SysTick
+  handlers bridged in `stm32f4xx_it.c`).
+- **Motors**: TB6612FNG via TIM2 PWM 20 kHz (PA0/PA1, ARR 4499 @ 90 MHz APB1
+  timer clock), direction PC0–PC3, STBY PC4 (HIGH after init). Coast = INs
+  low; short-brake = INs high. Pin map in `firmware/inc/pin_config.h`
+  (Nucleo-F446RE defaults, adjustable).
+- **Link**: USART6 PC6/PC7 (AF8) at 115200 8N1 → Pi `/dev/ttyAMA0` (USART2
+  is the ST-Link VCP — avoid). Firmware idles safely with a silent link
+  (motors coasted from reset).
 
 ---
 
@@ -222,18 +258,18 @@ root/
 │       ├── hailo-setup.md               # Hailo stack setup (real stack: hailo-apps 26.03)
 │       ├── model-compilation.md         # Step-by-step model export guide
 │       └── networking.md                # LAN + hotspot configuration
-├── firmware/                        # STM32 motor control (future)
-│   ├── Core/
-│   │   ├── Inc/
-│   │   │   ├── main.h
-│   │   │   ├── uart_protocol.h
-│   │   │   └── motor_control.h
-│   │   └── Src/
-│   │       ├── main.c
-│   │       ├── uart_protocol.c
-│   │       └── motor_control.c
-│   ├── Drivers/
-│   └── CMakeLists.txt
+├── firmware/                        # STM32F446RE motor controller
+│   ├── CMakeLists.txt               # single-target build (platform-control layout)
+│   ├── CMakePresets.json            # STM32F4-Release / STM32F4-Debug
+│   ├── cmake/                       # toolchains/, compile_options/, post_build.cmake
+│   ├── ext/                         # vendored: CMSIS + STM32F4 HAL, FreeRTOS V11.3.0
+│   ├── inc/                         # main.h, pin_config.h, FreeRTOSConfig.h,
+│   │                                #   stm32f4xx_hal_conf.h, uart_protocol.h,
+│   │                                #   uart_link.h, motor_control.h
+│   ├── lib/Protocol/                # pure parser + CRC-8 (hardware-independent)
+│   ├── platform/                    # linker/ (STM32F446RE_FLASH.ld), startup/
+│   ├── src/Core/                    # main, uart_link, motor_control, app_tasks, it, timebase
+│   └── tools/crc_parity_check.py    # CRC parity vs Pi implementation
 ├── PLAN.md
 ├── README.md
 └── .gitignore
@@ -335,10 +371,10 @@ Version pairing matrix lives in `raspi/docs/hailo-setup.md` (hailo-apps 26.03.x 
 - [ ] A/B performance comparison
 
 ### Phase 4: Motor Control
-- [ ] UART HAL implementation
-- [ ] Motor control REST API
-- [ ] Dual joystick frontend component
-- [ ] End-to-end test with STM32 + motors
+- [x] UART HAL implementation
+- [x] Motor control REST API
+- [x] Dual joystick frontend component
+- [ ] End-to-end test with STM32 + motors   ← hardware-gated (firmware ready)
 
 ### Phase 5: Networking & Polish
 - [ ] Hotspot mode configuration
@@ -347,7 +383,7 @@ Version pairing matrix lives in `raspi/docs/hailo-setup.md` (hailo-apps 26.03.x 
 - [ ] Documentation completion
 
 ### Phase 6: Vehicle Integration
-- [ ] STM32 firmware development
+- [x] STM32 firmware development   ← builds + CRC parity-verified; on-board bring-up pending
 - [ ] Physical integration (mounting, wiring)
 - [ ] Field testing
 
