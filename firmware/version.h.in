@@ -1,0 +1,11 @@
+/**
+ * version.h — firmware version, generated from git describe at configure time.
+ * Do not edit: configure_file(version.h.in -> generated/version.h).
+ */
+
+#ifndef VERSION_H
+#define VERSION_H
+
+#define FW_VERSION "@GIT_VERSION@"
+
+#endif /* VERSION_H */

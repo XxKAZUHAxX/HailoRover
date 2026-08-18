@@ -1,0 +1,49 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "Default",
+      "hidden": true,
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "STM32F4-Default",
+      "hidden": true,
+      "inherits": "Default",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/CMakeToolchain-STM32F4.cmake",
+      "cacheVariables": {
+        "BUILD_TESTING": "OFF",
+        "LINKER_SCRIPT": "${sourceDir}/platform/linker/STM32F446RE_FLASH.ld"
+      }
+    },
+    {
+      "name": "STM32F4-Release",
+      "inherits": "STM32F4-Default",
+      "binaryDir": "${sourceDir}/build/Release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "STM32F4-Debug",
+      "inherits": "STM32F4-Default",
+      "binaryDir": "${sourceDir}/build/Debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "STM32F4-Release",
+      "configurePreset": "STM32F4-Release"
+    },
+    {
+      "name": "STM32F4-Debug",
+      "configurePreset": "STM32F4-Debug"
+    }
+  ]
+}
