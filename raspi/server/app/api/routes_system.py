@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter
 
@@ -33,16 +35,55 @@ def _read_cpu_temp() -> float | None:
     return None
 
 
+_NPU_TEMP_TTL_S = 15.0  # health is polled every ~5s; rate-limit chip control requests
+_npu_temp_cache: dict[str, Any] = {"value": None, "at": 0.0}
+_hailo_device: Any = None  # lazily-opened hailo_platform.Device control handle
+
+
+def _get_hailo_device() -> Any:
+    """Open (once) the Hailo device control handle via the legacy binding."""
+    global _hailo_device
+    if _hailo_device is None:
+        from hailo_platform import Device  # Pi-only; ships with the hailoRT wheel
+
+        _hailo_device = Device()
+    return _hailo_device
+
+
+def _read_npu_temp_sync() -> float | None:
+    """Average of the chip's two internal temperature sensors (TS0/TS1).
+
+    ``Device.control.get_chip_temperature()`` is the legacy ``hailo_platform``
+    binding over the HailoRT control protocol — the newer ``hailo`` module
+    does NOT expose it. Works while the pipeline runs (control channel shared).
+    """
+    if settings.inference_engine != "hailo":
+        return None
+    try:
+        info = _get_hailo_device().control.get_chip_temperature()
+    except Exception as e:
+        logger.warning("NPU temp read failed: %s", e)
+        return None
+    return round((info.ts0_temperature + info.ts1_temperature) / 2.0, 2)
+
+
+async def _read_npu_temp() -> float | None:
+    """Cached NPU temperature (°C) — None when unavailable."""
+    now = time.monotonic()
+    if now - float(_npu_temp_cache["at"]) < _NPU_TEMP_TTL_S:
+        return _npu_temp_cache["value"]
+    value = await asyncio.to_thread(_read_npu_temp_sync)
+    _npu_temp_cache["value"] = value
+    _npu_temp_cache["at"] = now
+    return value
+
+
 @router.get("/health", response_model=SystemHealth)
 async def health() -> SystemHealth:
     """System health snapshot: temps, uptime, FPS, engine status."""
     return SystemHealth(
         cpu_temp_c=_read_cpu_temp(),
-        # Always None: the Hailo-8L exposes no user-accessible temperature API
-        # in HailoRT 4.23 — no fw-control subcommand, no Python binding API, and
-        # the PM Values in `fw-control identify` are undocumented internal
-        # counters that must not be interpreted as temperature.
-        npu_temp_c=None,
+        npu_temp_c=await _read_npu_temp(),
         uptime_seconds=round(time.time() - _START_TIME, 1),
         fps=round(
             stream_service.fps if settings.inference_engine == "hailo" else camera_service.fps, 1
