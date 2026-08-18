@@ -72,7 +72,7 @@ cd raspi/server
 cp .env.example .env                        # set INFERENCE_ENGINE=hailo
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 # → log: "Inference engine: Hailo NPU (GStreamer pipeline takeover)"
-# → browser: http://<pi-ip>:8000 (build the frontend once: cd ../frontend && npm run build)
+# → browser: http://<pi-ip>:8000 (build + deploy the frontend once: cd ../frontend && npm run deploy)
 ```
 
 ---
